@@ -1,0 +1,93 @@
+#!/usr/bin/php
+<?php
+// include the common PHP code file
+require("a2.php");
+$usage = "Usage: $argv[0] Number";
+$db = dbConnect(DB_CONNECTION);
+
+
+// Check arguments
+if (count($argv) != 3 && ($argv[2] > 1000 || $argv[2] < 1)) exit("$usage\n");
+
+
+function quote($s){
+  return "'".$s."'";
+}
+
+//Abstract the genre of the title 
+$movie = $argv[1];
+$ge_sql = "select distinct ge.Genre as gen
+from Movie mo,Genre ge
+where mo.id = ge.movie_id
+and upper(mo.title) = upper(%s)";
+
+$result = dbQuery($db,mkSQL($ge_sql,$movie));
+
+
+$genres = array();
+while($row = pg_fetch_array($result))
+{
+    $genres[] = $row['gen'];
+}
+ 
+$genrestring = implode(",", array_map('quote',$genres));
+
+  
+  
+  
+//Abstract the keyword of the title 
+$ke_sql = "select distinct ke.keyword as key
+from Movie mo,keyword ke
+where mo.id = ke.movie_id
+and upper(mo.title) = upper(%s)";
+
+$result = dbQuery($db,mkSQL($ke_sql,$movie));
+
+$keywords = array();
+while($row = pg_fetch_array($result))
+{
+    $keywords[] = $row['key'];
+}
+$keywordstring = implode(",", array_map('quote',$keywords));          
+$num = $argv[2];
+
+
+
+$q .= "
+select distinct mo.title, mo.year,g.ge_num,k.ke_num,r.imdb_score,r.num_voted_users
+from movie as mo 
+join rating as r on r.movie_id = mo.id 
+join (
+select movie_id, count(*) as ge_num
+    from genre as ge where ge.genre in ($genrestring) 
+    group by movie_id 
+) as g on g.movie_id = mo.id
+join (
+    select movie_id,
+    sum(case when ke.keyword in ($keywordstring) then 1 else 0 end) as ke_num
+    from keyword as ke
+    group by ke.movie_id
+  ) as k on mo.id = k.movie_id 
+where g.ge_num >= 1 and upper(mo.title) <> upper(%s) 
+order by g.ge_num desc, k.ke_num desc, r.imdb_score desc, r.num_voted_users desc
+limit ".$num.";
+";
+
+$r = dbQuery($db, mkSQL($q, $movie));
+
+
+// Iterate through the results and print
+$i = 1;
+while ($t = dbNext($r)) {
+  echo "$i. $t[0] (";
+  if (!empty($t[1])) echo("$t[1]) ");
+  if (!empty($t[2])) echo("[$t[2], ");
+  if (empty($t[3])) echo "0, ";
+  else echo("$t[3], ");
+  if (!empty($t[4])) echo("$t[4], ");
+  if (!empty($t[5])) echo($t[5]);
+  echo "]\n";
+  $i++;
+}
+?>
+ 

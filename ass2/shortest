@@ -1,0 +1,129 @@
+#!/usr/bin/php
+<?php
+
+require("a2.php");
+$usage = "Usage: $argv[0] Start_Name End_Name";
+
+$db = dbConnect(DB_CONNECTION);
+if (count($argv) != 3 || is_numeric($argv[1]) || is_numeric($argv[2])) exit("$usage\n");
+
+
+//Change the string of name into id
+$id = "select actor.id from actor where actor.name ilike %s";
+$start = dbOneValue($db,mkSQL($id,$argv[1]));
+$end = dbOneValue($db,mkSQL($id,$argv[2]));
+
+//Query get movie id and actor id
+$movies = "select ac.movie_id from acting ac 
+           where ac.actor_id = %d";
+$actor = "select ac.actor_id from acting ac 
+          where ac.movie_id = %d";
+
+$queue = new SplQueue();
+$queue->push($start);
+
+$count = 0;
+$found = 0;
+//$size is the number that join the queue in count[i]
+//i.e.:
+$size = 1;
+$pop = array();
+
+while($count <= 6 and $queue->count() > 0){
+	$i = 1;
+	$array = array();
+	while($i <= $size and $queue->count() > 0){
+		$curr = $queue->dequeue();
+		$pop[] = $curr;
+		if($curr == $end){
+		    $found = 1;
+		}
+		//Find the movie that play by the movie that poped out
+		$r1 = dbQuery($db,mkSQL($movies,$curr));
+		while($t = dbNext($r1)){
+		    //Find the actor the in this movie 
+		    //Which means this two actors are connected by the movie in $t
+			$r2 = dbQuery($db,mkSQL($actor,$t[0]));
+			while($m = dbNext($r2)){
+			    //Find the neighbour id
+				$next_m = $m[0];
+				if(!in_array($next_m,$pop)){
+					$array[] = $next_m;
+					//$path[$next_m][] store the previous id
+					if(empty($path[$next_m]) or !in_array($curr,$path[$next_m]))
+						$path[$next_m][] = $curr;
+				}
+			}
+		}
+		$i++;
+	}
+	//No path find
+	if($found == 0){
+		$array = array_unique($array);
+		foreach($array as $a){
+			$pop[] = $a;
+			$queue->push($a);
+		}
+	}
+	else break;//find
+	//For level[0],calculate the num that pop at the same time
+	$size = $queue->count();
+	//count the level
+	//If exist 6,quit
+	$count++;
+}
+
+$name = "select a.name from actor a 
+        where a.id = %d";
+$movie_name = "select mo.year, mo.title from acting a1,acting a2,movie mo
+               where a1.movie_id = a2.movie_id and a1.movie_id = mo.id 
+               and a1.actor_id = %d and a2.actor_id = %d";
+
+$result = array();
+
+
+if(!$found){
+    exit("$usage\n");
+} else{
+	find($path,$end,$start,"",$db,$name,$movie_name,$result);
+}
+sort($result);
+
+
+function find($path,$curr,$end,$str,$db,$name,$movie,&$result){
+    //If it is strainght connected
+	if(in_array($end,$path[$curr])){
+	    //Find the name of $end
+		$end_n = dbOneValue($db,mkSQL($name,(int)$end));
+	    //find the name of $curr
+		$curr_n = dbOneValue($db,mkSQL($name,(int)$curr));
+		//Find the movie name
+		$r = dbQuery($db,mkSQL($movie,(int)$curr,(int)$end));
+		while($t = dbNext($r)){
+			$result[] = "{$end_n} was in {$t["title"]} ({$t["year"]}) with {$curr_n}; {$str}";
+	    }
+    } else{
+    //else find from the back
+		$curr_n = dbOneValue($db,mkSQL($name,(int)$curr));
+		foreach($path[$curr] as $p){
+		    //Find the previous name
+			$previous = dbOneValue($db,mkSQL($name,(int)$p));
+			//Search the movie name
+			$r = dbQuery($db,mkSQL($movie,(int)$curr,(int)$p));
+			while($t = dbNext($r))
+			//Recursive till the end
+			find($path,$p,$end,"{$previous} was in {$t["title"]} ({$t["year"]}) with {$curr_n}; {$str}",$db,$name,$movie,$result);
+		}
+	}
+}
+
+
+
+$i = 1;
+foreach ($result as $r){
+	print "{$i}. ".rtrim($r,"; ")."\n";
+	$i++;
+}
+
+?>
+ 

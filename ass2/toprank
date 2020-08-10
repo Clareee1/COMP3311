@@ -1,0 +1,123 @@
+#!/usr/bin/php
+<?php
+// include the common PHP code file
+require("a2.php");
+$usage = "Usage: $argv[0] (Genres) K StartYear EndYear";
+$db = dbConnect(DB_CONNECTION);
+
+
+// Check arguments
+if ((count($argv) == 4 && !is_numeric($argv[1]) && !is_numeric($argv[2]) && !is_numeric($argv[3])) && count($argv) != 5 ) exit("$usage\n");
+
+
+
+
+if($argc == 4) {
+    if($argv[1] > 1000 || $argv[1] < 1) {
+        exit("$usage\n");
+    }
+    if ($argv[2] > 2020 || $argv[2] < 1900) {
+        exit("$usage\n");
+    }
+    if ($argv[3] > 2020 || $argv[3] < 1900) {
+        exit("$usage\n");
+    }
+    if ( $argv[2] > $argv[3]){
+        exit("$usage\n");
+    }
+
+} else {//$argc = 5
+    $string = $argv[1]; // Genre type
+    $str_arr = preg_split("/&/",$string);
+    if (count($str_arr) > 8) {
+        exit("$usage\n");
+    }
+    if($argv[2] > 1000 || $argv[2] < 1) {
+        exit("$usage\n");
+    }
+    if ($argv[3] > 2020 || $argv[3] < 1900) {
+        exit("$usage\n");
+    }
+    if ($argv[4] > 2020 || $argv[4] < 1900) {
+        exit("$usage\n");
+    }
+    if ( $argv[3] > $argv[4]){
+        exit("$usage\n");
+    }
+}
+
+
+
+function quote($s){
+  return "'".$s."'";
+}
+
+
+// process the generic
+
+//Remove the first value and return that ,which is ./toprank
+array_shift($argv);
+
+if ($argc == 5){
+  // process the genere query to the where query 
+  $genre = array_shift($argv);
+  $array = explode("&", $genre);
+  //Add quote to the array
+  $array = array_map("quote", $array);
+  $sql = join(",",$array); 
+  // match genre 
+  $q = ' 
+  with Genre_movie as (
+    select movie_id, count(*)
+    from genre as g where g.genre in ('.$sql.') 
+    group by movie_id 
+  )
+  ';
+    // join and filter genre
+    $sql = "join Genre_movie as g on mo.id = g.movie_id and g.count=". sizeof($array);
+
+    $num = array_shift($argv);
+    $start = array_shift($argv);
+    $end = array_shift($argv);
+
+    $q .= "
+    select distinct mo.title, mo.year, mo.content_rating, mo.lang,r.imdb_score, r.num_voted_users
+    from movie as mo 
+    join rating as r on r.movie_id = mo.id ".$sql." 
+    where mo.year >=".$start." and mo.year<=".$end."
+    order by r.imdb_score desc, r.num_voted_users desc
+    limit ".$num."
+    ";} else {
+
+    $num = array_shift($argv);
+    $start = array_shift($argv);
+    $end = array_shift($argv);
+
+    $q = "
+    select distinct mo.title, mo.year, mo.content_rating, mo.lang,r.imdb_score, r.num_voted_users
+    from movie as mo 
+    join rating as r on r.movie_id = mo.id 
+    where mo.year >=".$start." and mo.year<=".$end."
+    order by r.imdb_score desc, r.num_voted_users desc
+    limit ".$num."
+    ";
+}
+$r = dbQuery($db, $q);
+
+
+
+// Iterate through the results and print
+$i = 1;
+while ($t = dbNext($r)) {
+  echo "$i. $t[0] (";
+  if (!empty($t[1])) echo("$t[1], ");
+  if (!empty($t[2])) echo("$t[2], ");
+  if (!empty($t[3])) echo($t[3]);
+  echo ") [";
+  if (!empty($t[4])) echo("$t[4], ");
+  if (!empty($t[5])) echo($t[5]);
+  echo "]\n";
+  $i++;
+}
+?>
+

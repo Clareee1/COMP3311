@@ -1,0 +1,48 @@
+#!/usr/bin/php
+<?php
+
+
+require("a2.php");
+
+
+
+// PROGRAM BODY BEGINS
+
+$usage = "Usage: $argv[0] T-Name";
+$db = dbConnect(DB_CONNECTION);
+
+// Check arguments
+if (count($argv) < 2) exit("$usage\n");
+
+// Get the return results
+//Change into upper case
+$val = strtoupper($argv[1]);
+$val = "%".$val."%";
+
+$q = "select mo.title,mo.year, mo.content_rating,ra.imdb_score,Gr.gn
+from movie mo,rating ra, (select movie_id,string_agg(genre,',' order by genre) as gn from Genre group by movie_id) Gr where Gr.movie_id = mo.id and ra.movie_id = mo.id and 
+upper(mo.title) like upper(%s)
+order by
+mo.year ASC, ra.imdb_score DESC,title ASC";
+
+$r = dbQuery($db, mkSQL($q, $val));
+
+// Iterate through the results and print
+$i = 1;
+while ($t = dbNext($r)) {
+  echo "$i. $t[0]";
+  echo " (";
+  if (!empty($t[1]))
+    echo "$t[1], ";
+  if (!empty($t[2]))
+    echo "$t[2], ";
+  if (!empty($t[3]))
+    echo "$t[3])";
+  if (!empty($t[4]))
+    echo " [$t[4]";
+  echo "]\n";
+  $i++;
+}
+
+
+?>

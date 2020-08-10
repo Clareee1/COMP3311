@@ -1,0 +1,381 @@
+#!/usr/bin/php
+<?php
+
+//
+// degrees
+//
+
+// include the common PHP code file
+require("a2.php");
+
+// PROGRAM BODY BEGINS
+
+$usage = "Usage: $argv[0] 'Actor' M N";
+$db = dbConnect(DB_CONNECTION);
+
+// Count
+$i = 1;
+
+// guy (Vertex 1)
+// Check arguments
+if (count($argv) < 4) exit("$usage\n");
+$guy = strtoupper($argv[1]);
+$min = $argv[2];
+$max = $argv[3];
+//echo"$guy - $min - $max\n";
+if ($min < 1 || $max > 6) exit;
+// guy name normalised
+$q = "SELECT actor.name FROM actor
+      WHERE upper(name) = %s";
+$r = dbQuery($db, mkSQL($q, $guy) );
+if (pg_num_rows($r) == 0) exit;
+$ji = dbNext($r);
+$guy = $ji[0];
+//echo"$guy\n";
+// guy ID
+$q = "SELECT id FROM actor
+      WHERE name = %s";
+$r = dbQuery($db, mkSQL($q, $guy) );
+if (pg_num_rows($r) == 0) exit;
+$ji = dbNext($r);
+$id = $ji[0];
+//echo"$id\n";
+
+
+
+
+// mov
+// Guy's Movies (Edge 1), Format (12, 123)
+$q = "SELECT movie_id from Acting
+      where actor_id = %d";
+$r = dbQuery($db, mkSQL($q, $id) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$mov = "$ji[0]";
+while ($ji = dbNext($r)) $mov = "$mov,$ji[0]";
+$mov = "($mov)";
+//echo"mov: $mov \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+// ac1
+// Actors sharing mov (minus guy) (Vertex 2)
+$q = "SELECT acting.actor_id from Acting
+  WHERE acting.movie_id in %L --mov
+  AND acting.actor_id != %d   --id
+";
+$r = dbQuery($db, mkSQL($q, $mov, $id) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$ac1 = "$ji[0]";
+while ($ji = dbNext($r) ) $ac1 = "$ac1,$ji[0]";
+$ac1 = "($ac1)";
+//echo"ac1: $ac1 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+  // degree 1
+  // print names
+if ($min <= 1 && $max >= 1) {
+  $q = "SELECT name FROM actor
+        WHERE id in %L --ac1
+        ORDER BY name";
+  $r = dbQuery($db, mkSQL($q, $ac1) );
+
+  while ($ji = dbNext($r) ) {
+    echo"$i. $ji[0] (1)\n";
+    $i++;
+  }
+
+  if ($max == 1) exit;
+}
+
+// mov1
+// movies of ac1 (minus mov) (Edge 2)
+$q = "SELECT movie_id from Acting
+      where actor_id in %L -- ac1
+      AND movie_id NOT IN %L -- mov";
+$r = dbQuery($db, mkSQL($q, $ac1, $mov) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$mov1 = "$ji[0]";
+while ($ji = dbNext($r)) $mov1 = "$mov1,$ji[0]";
+$mov1 = "($mov1)";
+//echo"mov1: $mov1 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+// ac2
+// Actors sharing mov1 (minus guy, ac1) (Vertex 3)
+$q = "SELECT acting.actor_id from Acting
+  WHERE acting.movie_id in %L --mov1
+  AND acting.actor_id != %d   --id
+  AND acting.actor_id NOT IN %L --ac1
+";
+$r = dbQuery($db, mkSQL($q, $mov1, $id, $ac1) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$ac2 = "$ji[0]";
+while ($ji = dbNext($r) ) $ac2 = "$ac2,$ji[0]";
+$ac2 = "($ac2)";
+//echo"ac2: $ac2 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+  // degree 2
+  // print names
+if ($min <= 2 && $max >= 2) {
+  $q = "SELECT name FROM actor
+        WHERE id in %L --ac2
+        ORDER BY name";
+  $r = dbQuery($db, mkSQL($q, $ac2) );
+
+  while ($ji = dbNext($r) ) {
+    echo"$i. $ji[0] (2)\n";
+    $i++;
+  }
+
+  if ($max == 2) exit;
+}
+
+
+
+//@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+
+
+
+// mov2
+// movies of ac2 (minus mov, mov1) (Edge 3)
+$q = "SELECT movie_id from Acting
+      where actor_id in %L -- ac2
+      AND movie_id NOT IN %L -- mov
+      AND movie_id NOT IN %L -- mov1
+";
+$r = dbQuery($db, mkSQL($q, $ac2, $mov, $mov1) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$mov2 = "$ji[0]";
+while ($ji = dbNext($r)) $mov2 = "$mov2,$ji[0]";
+$mov2 = "($mov2)";
+//echo"mov2: $mov2 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+// ac3
+// Actors sharing mov2 (minus guy, ac1, ac2) (Vertex 4)
+$q = "SELECT acting.actor_id from Acting
+  WHERE acting.movie_id in %L --mov2
+  AND acting.actor_id != %d   --id
+  AND acting.actor_id NOT IN %L --ac1
+  AND acting.actor_id NOT IN %L --ac2
+";
+$r = dbQuery($db, mkSQL($q, $mov2, $id, $ac1, $ac2) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$ac3 = "$ji[0]";
+while ($ji = dbNext($r) ) $ac3 = "$ac3,$ji[0]";
+$ac3 = "($ac3)";
+//echo"ac3: $ac3 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+  // degree 3
+  // print names
+if ($min <= 3 && $max >= 3) {
+  $q = "SELECT name FROM actor
+        WHERE id in %L --ac3
+        ORDER BY name";
+  $r = dbQuery($db, mkSQL($q, $ac3) );
+
+  while ($ji = dbNext($r) ) {
+    echo"$i. $ji[0] (3)\n";
+    $i++;
+  }
+
+  if ($max == 3) exit;
+}
+
+
+
+
+//@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+
+//echo"Pssss\n";
+
+// mov3
+// movies of ac3 (minus mov, mov1, mov2) (Edge 4)
+$q = "SELECT movie_id from Acting
+      where actor_id in %L -- ac3
+      AND movie_id NOT IN %L -- mov
+      AND movie_id NOT IN %L -- mov1
+      AND movie_id NOT IN %L -- mov2
+";
+$r = dbQuery($db, mkSQL($q, $ac3, $mov, $mov1, $mov2) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$mov3 = "$ji[0]";
+while ($ji = dbNext($r)) $mov3 = "$mov3,$ji[0]";
+$mov3 = "($mov3)";
+//echo"mov3: $mov3 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+// ac4
+// Actors sharing mov3 (minus guy, ac1, ac2, ac3) (Vertex 5)
+$q = "SELECT acting.actor_id from Acting
+  WHERE acting.movie_id in %L --mov3
+  AND acting.actor_id != %d   --id
+  AND acting.actor_id NOT IN %L --ac1
+  AND acting.actor_id NOT IN %L --ac2
+  AND acting.actor_id NOT IN %L --ac3
+";
+$r = dbQuery($db, mkSQL($q, $mov3, $id, $ac1, $ac2, $ac3) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$ac4 = "$ji[0]";
+while ($ji = dbNext($r) ) $ac4 = "$ac4,$ji[0]";
+$ac4 = "($ac4)";
+//echo"ac4: $ac4 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+  // degree 4
+  // print names
+if ($min <= 4 && $max >= 4) {
+  $q = "SELECT name FROM actor
+        WHERE id in %L --ac4
+        ORDER BY name";
+  $r = dbQuery($db, mkSQL($q, $ac4) );
+
+  while ($ji = dbNext($r) ) {
+    echo"$i. $ji[0] (4)\n";
+    $i++;
+  }
+
+  if ($max == 4) exit;
+}
+
+
+
+
+
+//@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+
+//echo"Pssss\n";
+
+// mov4
+// movies of ac4 (minus mov, mov1, mov2, mov3) (Edge 5)
+$q = "SELECT movie_id from Acting
+      where actor_id in %L -- ac4
+      AND movie_id NOT IN %L -- mov
+      AND movie_id NOT IN %L -- mov1
+      AND movie_id NOT IN %L -- mov2
+      AND movie_id NOT IN %L -- mov3
+";
+$r = dbQuery($db, mkSQL($q, $ac4, $mov, $mov1, $mov2, $mov3) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$mov4 = "$ji[0]";
+while ($ji = dbNext($r)) $mov4 = "$mov4,$ji[0]";
+$mov4 = "($mov4)";
+//echo"mov4: $mov4 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+// ac5
+// Actors sharing mov4 (minus guy, ac1, ac2, ac3, ac4) (Vertex 6)
+$q = "SELECT acting.actor_id from Acting
+  WHERE acting.movie_id in %L --mov4
+  AND acting.actor_id != %d   --id
+  AND acting.actor_id NOT IN %L --ac1
+  AND acting.actor_id NOT IN %L --ac2
+  AND acting.actor_id NOT IN %L --ac3
+  AND acting.actor_id NOT IN %L --ac4
+";
+$r = dbQuery($db, mkSQL($q, $mov4, $id, $ac1, $ac2, $ac3, $ac4) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$ac5 = "$ji[0]";
+while ($ji = dbNext($r) ) $ac5 = "$ac5,$ji[0]";
+$ac5 = "($ac5)";
+//echo"ac5: $ac5 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+  // degree 5
+  // print names
+if ($min <= 5 && $max >= 5) {
+  $q = "SELECT name FROM actor
+        WHERE id in %L --ac5
+        ORDER BY name";
+  $r = dbQuery($db, mkSQL($q, $ac5) );
+
+  while ($ji = dbNext($r) ) {
+    echo"$i. $ji[0] (5)\n";
+    $i++;
+  }
+
+  if ($max == 5) exit;
+}
+
+
+
+
+
+
+
+
+//@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+
+//echo"Pssss\n";
+
+// mov5
+// movies of ac5 (minus mov, mov1, mov2, mov3, mov4) (Edge 6)
+$q = "SELECT movie_id from Acting
+      where actor_id in %L -- ac5
+      AND movie_id NOT IN %L -- mov
+      AND movie_id NOT IN %L -- mov1
+      AND movie_id NOT IN %L -- mov2
+      AND movie_id NOT IN %L -- mov3
+      AND movie_id NOT IN %L -- mov4
+";
+$r = dbQuery($db, mkSQL($q, $ac5, $mov, $mov1, $mov2, $mov3, $mov4) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$mov5 = "$ji[0]";
+while ($ji = dbNext($r)) $mov5 = "$mov5,$ji[0]";
+$mov5 = "($mov5)";
+//echo"mov5: $mov5 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+// ac6
+// Actors sharing mov5 (minus guy, ac1, ac2, ac3, ac4, ac5) (Vertex 7)
+$q = "SELECT acting.actor_id from Acting
+  WHERE acting.movie_id in %L --mov5
+  AND acting.actor_id != %d   --id
+  AND acting.actor_id NOT IN %L --ac1
+  AND acting.actor_id NOT IN %L --ac2
+  AND acting.actor_id NOT IN %L --ac3
+  AND acting.actor_id NOT IN %L --ac4
+  AND acting.actor_id NOT IN %L --ac5
+";
+$r = dbQuery($db, mkSQL($q, $mov5, $id, $ac1, $ac2, $ac3, $ac4, $ac5) );
+if (pg_num_rows($r) == 0) exit; // EXIT
+$ji = dbNext($r);
+$ac6 = "$ji[0]";
+while ($ji = dbNext($r) ) $ac6 = "$ac6,$ji[0]";
+$ac6 = "($ac6)";
+//echo"ac6: $ac6 \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+  // degree 6
+  // print names
+if ($min <= 6 && $max >= 6) {
+  $q = "SELECT name FROM actor
+        WHERE id in %L --ac6
+        ORDER BY name";
+  $r = dbQuery($db, mkSQL($q, $ac6) );
+
+  while ($ji = dbNext($r) ) {
+    echo"$i. $ji[0] (6)\n";
+    $i++;
+  }
+
+  if ($max == 6) exit;
+}
+
+?>

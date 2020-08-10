@@ -1,0 +1,1075 @@
+#!/usr/bin/php
+<?php
+
+//
+// shortest
+//
+
+// include the common PHP code file
+require("a2.php");
+
+// PROGRAM BODY BEGINS
+
+$usage = "Usage: $argv[0] 'Actor1 Actor2'";
+$db = dbConnect(DB_CONNECTION);
+
+// Check arguments
+if (count($argv) < 3) exit("$usage\n");
+
+// Actor ID (guyA guyB)
+// Uppercase Actor Name
+$q = "select upper(%s), upper(%s)";
+$hi = dbQuery($db, mkSQL($q, $argv[1], $argv[2]));
+$ji = dbNext($hi);
+$guyAu = $ji[0];
+$guyBu = $ji[1];
+if ($guyAu == $guyBu) exit;
+//echo "$guyAu and $guyBu \n";
+// Actor ID
+$q = "select id from actor where upper(name) = %s";
+$fid = dbQuery($db, mkSQL($q, $guyAu) );
+if (pg_num_rows($fid) == 0) exit; // EXIT no actor
+$fetch = dbNext($fid);
+$guyA = $fetch[0];
+// fetch other guy
+$q = "select id from actor where upper(name) = %s";
+$fid = dbQuery($db, mkSQL($q, $guyBu) );
+if (pg_num_rows($fid) == 0) exit; // EXIT no actor
+$fetch = dbNext($fid);
+$guyB = $fetch[0];
+//echo"$guyA and $guyB\n";
+
+// Flag
+$flag = -1; //store distance of shortest path
+
+// Actor Name (nameA nameB)
+$q = "SELECT name from Actor where id = %d";
+$r = dbQuery($db, mkSQL($q, $guyA) );
+$ji = dbNext($r);
+$nameA = $ji[0];
+$q = " SELECT name from Actor where id = %d";
+$r = dbQuery($db, mkSQL($q, $guyB) );
+$ji = dbNext($r);
+$nameB = $ji[0];
+
+
+
+
+
+
+// key
+// movA = movies actor A in
+// mov1A = movies (actors 1 deg from A) in. [excludes prev]
+// ac1A = actors in movA. (actors 1 deg from A) [excludes prev]
+
+///////////////////////////////////// 1 degree separation
+// 2 vertex 1 edge
+
+// movA movB Format: (11,12)
+// Edge 1 from A, Edge 1 from B
+$q = "SELECT movie_id from Acting where actor_id = %d";
+$r = dbQuery($db, mkSQL($q, $guyA) );
+$ji = dbNext($r);
+$movA = "$ji[0]";
+while ($ji = dbNext($r)) $movA = "$movA,$ji[0]";
+$movA = "($movA)";
+//echo"movA: $movA \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit; //Actor doesn't exist
+$q = "SELECT movie_id from Acting where actor_id = %d";
+$r = dbQuery($db, mkSQL($q, $guyB) );
+$ji = dbNext($r);
+$movB = "$ji[0]";
+while ($ji = dbNext($r)) $movB = "$movB,$ji[0]";
+$movB = "($movB)";
+//echo"movB: $movB \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit;
+
+// 1 degree seperation
+//echo"1deg\n";
+$q = " SELECT id from Movie where id in %L AND id in %L ";
+$r = dbQuery($db, mkSQL($q, $movA, $movB) );
+//while ($ji = dbNext($r)) echo "1deg common movies id: $ji[0]\n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n\n\n\n\n\n";
+
+if (pg_num_rows($r) > 0) $flag = 1;
+
+if ($flag == 1) { //display results and exit
+  //echo"1deg SATISFY\n";
+
+  // movie names
+  $q = "SELECT title, year from Movie 
+        where id in 
+        (SELECT id from Movie where id in %L AND id in %L) 
+        ORDER BY title ASC";
+  $r = dbQuery($db, mkSQL($q, $movA, $movB) );
+  $i = 1;
+  while ($ji = dbNext($r)) {
+    echo "$i. $nameA was in $ji[0]";
+    if (!empty($ji[1]) ) echo" ($ji[1])";
+    echo " with $nameB\n";
+    $i++;
+  }
+  exit; 
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+////////////////////////////////////////////// 2 degree separation
+// 3 vertex 2 edge
+// want mov1A movB intersect
+// need mov1A
+
+// get ac1A (Vertex 1 from A)
+$q = "SELECT actor_id from Acting where movie_id in %L --movA
+      AND actor_id != %d";
+$r = dbQuery($db, mkSQL($q, $movA, $guyA) );
+$ji = dbNext($r);
+$ac1A = "$ji[0]";
+while ($ji = dbNext($r)) $ac1A = "$ac1A,$ji[0]";
+$ac1A = "($ac1A)";
+//echo"ac1A: $ac1A \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit;
+
+// mov1A 
+// movies of ac1A minus movA (Edge 2 from A)
+$q = "SELECT movie_id from Acting where actor_id in %L AND movie_id NOT IN %L";
+$r = dbQuery($db, mkSQL($q, $ac1A, $movA) );
+$ji = dbNext($r);
+$mov1A = "$ji[0]";
+while ($ji = dbNext($r)) $mov1A = "$mov1A,$ji[0]";
+$mov1A = "($mov1A)";
+//echo"mov1A: $mov1A \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit; //Actor doesn't exist
+
+//Now Intersect
+// 2 degree seperation
+//echo"2deg\n";
+$q = " SELECT id from Movie where id in %L AND id in %L ";
+$r = dbQuery($db, mkSQL($q, $mov1A, $movB) );
+//while ($ji = dbNext($r)) echo "2deg common movies id: $ji[0]\n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n\n\n\n\n\n";
+
+if (pg_num_rows($r) > 0) $flag = 2;
+
+
+
+
+//display results and exit
+if ($flag == 2) { 
+  //echo"2deg SATISFY\n";
+
+// ac1a actors connected to guyB thru movB
+$q = "(SELECT actor_id from Acting where movie_id in %L and actor_id in %L)"; 
+$r = dbQuery($db, mkSQL($q, $movB, $ac1A) );
+$ji = dbNext($r);
+$tempA = "$ji[0]";
+while ($ji = dbNext($r)) $tempA = "$tempA,$ji[0]";
+$tempA = "($tempA)";
+//echo"tempA: $tempA \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+// Get Everything
+  $q = "
+  SELECT First.movie1_title, First.movie1_year, 
+         Second.actor2_name, Second.movie2_title, Second.movie2_year
+
+  FROM ( 
+
+       SELECT temp.movie_id as movie2_id, movie.title as movie2_title, 
+              movie.year as movie2_year, -- movie, id title year
+              temp.actor_id as actor2_id, actor.name as actor2_name -- actor, id name
+
+       FROM (
+            SELECT movie_id, actor_id from Acting 
+            where movie_id in %L and actor_id in %L) as Temp 
+            --ac1a actors connected to guyB thru movB
+
+       INNER JOIN movie on movie.id = temp.movie_id
+       INNER JOIN actor on actor.id = temp.actor_id
+  )
+
+  as Second
+
+  INNER JOIN (
+             SELECT temp.movie_id as movie1_id, movie.title as movie1_title, 
+                    movie.year as movie1_year,
+                    temp.actor_id as actor1_id
+             FROM (
+                  SELECT * from acting where actor_id in %L AND movie_id in %L) 
+                  as temp
+                  -- for actors connected to B, find connection to A
+   
+             INNER JOIN movie ON movie.id = temp.movie_id
+  )
+
+  as First
+
+  ON Second.actor2_id = First.actor1_id
+
+  ORDER BY First.movie1_title ASC, First.movie1_year ASC, 
+  Second.actor2_name ASC, Second.movie2_title ASC, Second.movie2_year ASC
+";
+
+  $r = dbQuery($db, mkSQL($q, $movB, $ac1A, $tempA, $movA) );
+  $i = 1;
+  while ($ji = dbNext($r)) {
+    echo "$i. $nameA was in $ji[0]";
+    if (!empty($ji[1]) ) echo" ($ji[1])";
+    echo " with $ji[2]; $ji[2] was in $ji[3]";
+    if (!empty($ji[4]) ) echo" ($ji[4])";
+    echo " with $nameB\n";
+
+    $i++;
+  }
+
+  exit; 
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/////////////////////////////////////////////// 3 degree separation
+// want mov1A mov1B intersect
+// need mov1B
+
+// ac1B 
+$q = "SELECT actor_id from Acting where movie_id in %L AND actor_id != %d";
+$r = dbQuery($db, mkSQL($q, $movB, $guyB) );
+$ji = dbNext($r);
+$ac1B = "$ji[0]";
+while ($ji = dbNext($r)) $ac1B = "$ac1B,$ji[0]";
+$ac1B = "($ac1B)";
+//echo"ac1B: $ac1B \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit;
+// mov1B from ac1B minus movB
+$q = "SELECT movie_id from Acting where actor_id in %L AND movie_id NOT IN %L";
+$r = dbQuery($db, mkSQL($q, $ac1B, $movB) );
+$ji = dbNext($r);
+$mov1B = "$ji[0]";
+while ($ji = dbNext($r)) $mov1B = "$mov1B,$ji[0]";
+$mov1B = "($mov1B)";
+//echo"mov1B: $mov1B \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit; //Actor doesn't exist
+
+//Now Intersect
+//echo"3deg\n";
+// 3 degree seperation
+$q = " SELECT id from Movie where id in %L AND id in %L ";
+$r = dbQuery($db, mkSQL($q, $mov1A, $mov1B) );
+//while ($ji = dbNext($r)) echo "3deg common movies id: $ji[0]\n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+
+
+if (pg_num_rows($r) > 0) $flag = 3;
+//display results and exit
+if ($flag == 3) { 
+  //echo"3deg SATISFY\n";
+
+// mm, movie id's of intersection match. borrow from Now Intersect
+$q = " SELECT id from Movie where id in %L AND id in %L ";
+$r = dbQuery($db, mkSQL($q, $mov1A, $mov1B) );
+$ji = dbNext($r);
+$mm = "$ji[0]";
+while ($ji = dbNext($r)) $mm = "$mm,$ji[0]";
+$mm = "($mm)";
+//echo"mm: $mm \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+// Get Everything
+// aid2 represents id of actor at vertex 2
+$q = "
+
+
+SELECT m1.title, m1.year, a2.name, m2.title, m2.year, a3.name, m3.title, m3.year
+
+FROM (
+  --mid3
+  SELECT T.mid1 as mid1, T.aid2 as aid2, T.mid2 as mid2, T.aid3 as aid3, A.movie_id as mid3
+
+  FROM (
+    -- mid1
+    SELECT A.movie_id as mid1, T.aid2 as aid2, T.mid2 as mid2, T.aid3 as aid3
+    FROM
+      (SELECT second.aid2 as aid2, second.mid2 as mid2, third.aid3 as aid3
+      FROM 
+        (SELECT movie_id as mid2, actor_id as aid2
+        FROM Acting 
+        WHERE movie_id in %L AND actor_id in %L) --mm ac1A
+      AS Second
+      INNER JOIN
+        (SELECT movie_id as mid2, actor_id as aid3
+        FROM Acting
+        WHERE movie_id in %L AND actor_id in %L) --mm ac1B
+      AS Third
+      ON Second.mid2 = Third.mid2)
+    as T
+    INNER JOIN Acting A ON T.aid2 = A.actor_id
+    WHERE A.movie_id IN %L                       --movA
+  ) AS T
+
+  INNER JOIN Acting A ON T.aid3 = A.actor_id
+  WHERE A.movie_id in %L                         --movB
+
+) AS T
+
+INNER JOIN Movie m1 ON m1.id = T.mid1
+INNER JOIN Actor a2 ON a2.id = T.aid2
+INNER JOIN Movie m2 ON m2.id = T.mid2
+INNER JOIN Actor a3 ON a3.id = T.aid3
+INNER JOIN Movie m3 ON m3.id = T.mid3
+
+ORDER BY m1.title, m1.year, a2.name, m2.title, m2.year, a3.name, m3.title, m3.year
+
+";
+
+  $r = dbQuery($db, mkSQL($q, $mm, $ac1A, $mm, $ac1B, $movA, $movB) );
+  $i = 1;
+  while ($ji = dbNext($r)) {
+    echo "$i. $nameA was in";
+     echo" $ji[0]";
+    if (!empty($ji[1]) ) echo" ($ji[1])";
+echo " with";
+     echo" $ji[2]; $ji[2] was in";
+     echo" $ji[3]";
+    if (!empty($ji[4]) ) echo" ($ji[4])";
+echo " with";
+     echo" $ji[5]; $ji[5] was in";
+     echo" $ji[6]";
+    if (!empty($ji[7]) ) echo" ($ji[7])";
+//echo" with";
+//     echo" $ji[8]; $ji[8] was in";
+//     echo" $ji[9]";
+//    if (!empty($ji[10]) ) echo" ($ji[10])";
+//echo" with";
+//     echo" $ji[11]; $ji[11] was in";
+//     echo" $ji[12]";
+//    if (!empty($ji[10]) ) echo" ($ji[13])";
+echo" with $nameB";
+
+    echo "\n";
+
+    $i++;
+  }
+//echo" FIN \n\n";
+
+  exit; 
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// NOTE: SELECT DISTINCT TO FILTER OUT DUPLICATES??
+////////////////////////////////////////////// 4 degree separation
+// want mov2A mov1B intersect. need mov2A
+// ac2A . minus ac1A, guyA
+$q = "SELECT actor_id from Acting 
+  where movie_id in %L AND actor_id != %d AND actor_id NOT IN %L";
+$r = dbQuery($db, mkSQL($q, $mov1A, $guyA, $ac1A) ); 
+$ji = dbNext($r);
+
+$ac2A = "$ji[0]";
+while ($ji = dbNext($r)) $ac2A = "$ac2A,$ji[0]";
+$ac2A = "($ac2A)";
+//echo"ac2A: $ac2A \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit; 
+
+// mov2A, from ac2A, minus (mov1A and movA)
+$q = "SELECT movie_id from Acting 
+  where actor_id in %L AND movie_id NOT IN %L AND movie_id NOT IN %L";
+$r = dbQuery($db, mkSQL($q, $ac2A, $mov1A, $movA) );
+$ji = dbNext($r);
+
+$mov2A = "$ji[0]";
+while ($ji = dbNext($r)) $mov2A = "$mov2A,$ji[0]";
+$mov2A = "($mov2A)";
+//echo"mov2A: $mov2A \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit; //Actor doesn't exist
+
+
+//Now Intersect
+//echo"4deg\n";
+// 4 degree seperation
+//mov2a mov1b
+$q = " SELECT id from Movie where id in %L AND id in %L ";
+$r = dbQuery($db, mkSQL($q, $mov2A, $mov1B) );
+//while ($ji = dbNext($r)) echo "4deg common movies id: $ji[0]\n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n\n\n\n\n\n";
+
+
+
+
+
+
+
+
+
+
+if (pg_num_rows($r) > 0) $flag = 4;
+//display results and exit
+if ($flag == 4) { 
+  //echo"4deg SATISFY\n";
+
+// mm, movie id's of intersection match. borrow from Now Intersect
+$q = " SELECT id from Movie where id in %L AND id in %L ";
+$r = dbQuery($db, mkSQL($q, $mov2A, $mov1B) );
+$ji = dbNext($r);
+$mm = "$ji[0]";
+while ($ji = dbNext($r)) $mm = "$mm,$ji[0]";
+$mm = "($mm)";
+//echo"mm: $mm \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+
+
+
+
+
+
+
+
+$q = "
+
+SELECT m1.title, m1.year, a2.name, m2.title, m2.year, a3.name, m3.title, m3.year, a4.name, m4.title, m4.year
+
+FROM (
+
+  -- all id's
+  SELECT F.mi1 as mi1, F.ai2 as ai2, F.mi2 as mi2, F.ai3 as ai3, F.mi3 as mi3, S.ai4 as ai4, S.mi4 as mi4
+
+  FROM (
+    -- FIRST HALF
+    -- get mi1
+    SELECT A.movie_id as mi1, T.ai2 as ai2, T.mi2 as mi2, T.ai3 as ai3, T.mi3 as mi3
+    FROM (
+
+      -- get ai2
+      SELECT A.actor_id as ai2, T.mi2 as mi2, T.ai3 as ai3, T.mi3 as mi3
+      FROM (
+
+        -- get mi2
+        SELECT A.movie_id as mi2, T.ai3 as ai3, T.mi3 as mi3
+        FROM (
+          -- get ai3, mi3
+          SELECT actor_id as ai3, movie_id as mi3
+          FROM Acting
+          WHERE movie_id in %L                    --mm
+            AND actor_id in %L                    --ac2a
+        ) as T
+ 
+        INNER JOIN Acting A on T.ai3 = A.actor_id
+        WHERE A.movie_id in %L                    --mov1a
+      ) as T
+
+      INNER JOIN Acting A on T.mi2 = A.movie_id
+      WHERE A.actor_id in %L                      --ac1a
+    ) as T
+
+    INNER JOIN Acting A on T.ai2 = A.actor_id
+    WHERE A.movie_id in %L                        --movA
+
+  ) as F
+
+  INNER JOIN (
+    -- SECOND HALF
+    -- mi4
+    SELECT T.mi3 as mi3, T.ai4 as ai4, A.movie_id as mi4
+    FROM (
+
+      -- mi3, ai4
+      SELECT movie_id as mi3, actor_id as ai4
+      FROM Acting
+      WHERE movie_id in %L                    --mm
+        AND actor_id in %L                    --ac1b
+
+    ) as T
+
+    INNER JOIN Acting A on A.actor_id = T.ai4
+    WHERE A.movie_id in %L                    --movB
+
+  ) as S
+
+  ON F.mi3 = S.mi3
+
+) as T
+
+INNER JOIN Movie m1 ON m1.id = T.mi1
+INNER JOIN Actor a2 ON a2.id = T.ai2
+INNER JOIN Movie m2 ON m2.id = T.mi2
+INNER JOIN Actor a3 ON a3.id = T.ai3
+INNER JOIN Movie m3 ON m3.id = T.mi3
+INNER JOIN Actor a4 ON a4.id = T.ai4
+INNER JOIN Movie m4 ON m4.id = T.mi4
+
+
+ORDER BY m1.title, m1.year, a2.name, m2.title, m2.year, a3.name, m3.title, m3.year, a4.name, m4.title, m4.year
+
+";
+
+  $r = dbQuery($db, mkSQL($q, $mm, $ac2A, $mov1A, $ac1A, $movA, $mm, $ac1B, $movB) );
+  $i = 1;
+  while ($ji = dbNext($r)) {
+
+    echo "$i. $nameA was in";
+     echo" $ji[0]";
+    if (!empty($ji[1]) ) echo" ($ji[1])";
+echo " with";
+     echo" $ji[2]; $ji[2] was in";
+     echo" $ji[3]";
+    if (!empty($ji[4]) ) echo" ($ji[4])";
+echo " with";
+     echo" $ji[5]; $ji[5] was in";
+     echo" $ji[6]";
+    if (!empty($ji[7]) ) echo" ($ji[7])";
+echo" with";
+     echo" $ji[8]; $ji[8] was in";
+     echo" $ji[9]";
+    if (!empty($ji[10]) ) echo" ($ji[10])";
+//echo" with";
+//     echo" $ji[11]; $ji[11] was in";
+//     echo" $ji[12]";
+//    if (!empty($ji[10]) ) echo" ($ji[13])";
+echo" with $nameB";
+
+    echo "\n";
+
+
+    $i++;
+  }
+//echo" FIN \n\n";
+
+  exit; 
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+///////////////////////////////////////////// 5 degree separation
+// want mov2A mov2B intersect. need mov2B
+// get ac2B, from mov1B, minus ac1B, guyB
+$q = "SELECT actor_id from Acting where movie_id in %L AND actor_id != %d AND actor_id NOT IN %L";
+$r = dbQuery($db, mkSQL($q, $mov1B, $guyB, $ac1B) ); 
+$ji = dbNext($r);
+
+$ac2B = "$ji[0]";
+while ($ji = dbNext($r)) $ac2B = "$ac2B,$ji[0]";
+$ac2B = "($ac2B)";
+//echo"ac2B: $ac2B \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit; 
+
+// mov2B, from ac2B, minus (mov1B and movB)
+$q = "SELECT movie_id from Acting where actor_id in %L AND movie_id NOT IN %L AND movie_id NOT IN %L";
+$r = dbQuery($db, mkSQL($q, $ac2B, $mov1B, $movB) );
+$ji = dbNext($r);
+
+$mov2B = "$ji[0]";
+while ($ji = dbNext($r)) $mov2B = "$mov2B,$ji[0]";
+$mov2B = "($mov2B)";
+//echo"mov2B: $mov2B \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit; //Actor doesn't exist
+
+
+//Now Intersect
+//echo"5deg\n";
+// 5 degree seperation
+//mov2a mov2b
+$q = " SELECT id from Movie where id in %L AND id in %L ";
+$r = dbQuery($db, mkSQL($q, $mov2A, $mov2B) );
+//while ($ji = dbNext($r)) echo "5deg common movies id: $ji[0]\n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n\n\n\n\n\n";
+
+
+
+
+
+
+
+if (pg_num_rows($r) > 0) $flag = 5;
+//display results and exit
+if ($flag == 5) { 
+  //echo"5deg SATISFY\n";
+
+// mm, movie id's of intersection match. borrow from Now Intersect
+$q = " SELECT id from Movie where id in %L AND id in %L ";
+$r = dbQuery($db, mkSQL($q, $mov2A, $mov2B) );
+$ji = dbNext($r);
+$mm = "$ji[0]";
+while ($ji = dbNext($r)) $mm = "$mm,$ji[0]";
+$mm = "($mm)";
+//echo"mm: $mm \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+
+
+
+
+
+
+
+
+$q = "
+
+SELECT m1.title, m1.year, a2.name, m2.title, m2.year, a3.name, m3.title, m3.year, a4.name, m4.title, m4.year
+  , a5.name, m5.title, m5.year
+
+FROM (
+
+  -- all id's
+  SELECT F.mi1 as mi1, F.ai2 as ai2, F.mi2 as mi2, F.ai3 as ai3, F.mi3 as mi3, S.ai4 as ai4, S.mi4 as mi4
+    , S.ai5 as ai5, S.mi5 as mi5
+
+  FROM (
+    -- FIRST HALF [no change from 4deg]
+    -- get mi1
+    SELECT A.movie_id as mi1, T.ai2 as ai2, T.mi2 as mi2, T.ai3 as ai3, T.mi3 as mi3
+    FROM (
+
+      -- get ai2
+      SELECT A.actor_id as ai2, T.mi2 as mi2, T.ai3 as ai3, T.mi3 as mi3
+      FROM (
+
+        -- get mi2
+        SELECT A.movie_id as mi2, T.ai3 as ai3, T.mi3 as mi3
+        FROM (
+          -- get ai3, mi3
+          SELECT actor_id as ai3, movie_id as mi3
+          FROM Acting
+          WHERE movie_id in %L                    --mm
+            AND actor_id in %L                    --ac2a
+        ) as T
+ 
+        INNER JOIN Acting A on T.ai3 = A.actor_id
+        WHERE A.movie_id in %L                    --mov1a
+      ) as T
+
+      INNER JOIN Acting A on T.mi2 = A.movie_id
+      WHERE A.actor_id in %L                      --ac1a
+    ) as T
+
+    INNER JOIN Acting A on T.ai2 = A.actor_id
+    WHERE A.movie_id in %L                        --movA
+
+  ) as F
+
+  INNER JOIN (
+    -- SECOND HALF
+    -- mi5
+    SELECT T.mi3 as mi3, T.ai4 as ai4, T.mi4 as mi4, T.ai5 as ai5, A.movie_id as mi5
+    FROM (
+
+      -- ai5
+      SELECT T.mi3 as mi3, T.ai4 as ai4, T.mi4 as mi4, A.actor_id as ai5
+      FROM (
+
+        -- mi4
+        SELECT T.mi3 as mi3, T.ai4 as ai4, A.movie_id as mi4
+        FROM (
+
+          -- mi3, ai4
+          SELECT movie_id as mi3, actor_id as ai4
+          FROM Acting
+          WHERE movie_id in %L                    --mm
+            AND actor_id in %L                    --ac2b @@@@@@@@@
+
+        ) as T
+
+        INNER JOIN Acting A on A.actor_id = T.ai4
+        WHERE A.movie_id in %L                    --mov1B @@@@@@@@
+
+      ) as T
+
+      INNER JOIN Acting A on A.movie_id = T.mi4
+      WHERE A.actor_id in %L                        --ac1B @@@@@@@@@
+
+    ) as T
+
+    INNER JOIN Acting A on A.actor_id = T.ai5
+    WHERE A.movie_id in %L                       --movB @@@@@@@@@
+
+  ) as S
+
+  ON F.mi3 = S.mi3
+
+) as T
+
+INNER JOIN Movie m1 ON m1.id = T.mi1
+INNER JOIN Actor a2 ON a2.id = T.ai2
+INNER JOIN Movie m2 ON m2.id = T.mi2
+INNER JOIN Actor a3 ON a3.id = T.ai3
+INNER JOIN Movie m3 ON m3.id = T.mi3
+INNER JOIN Actor a4 ON a4.id = T.ai4
+INNER JOIN Movie m4 ON m4.id = T.mi4
+
+INNER JOIN Actor a5 ON a5.id = T.ai5
+INNER JOIN Movie m5 ON m5.id = T.mi5
+
+
+ORDER BY m1.title, m1.year, a2.name, m2.title, m2.year, a3.name, m3.title, m3.year, a4.name, m4.title, m4.year
+  , a5.name, m5.title, m5.year
+
+
+";
+
+  $r = dbQuery($db, mkSQL($q, $mm, $ac2A, $mov1A, $ac1A, $movA, $mm, $ac2B, $mov1B, $ac1B, $movB) );
+  $i = 1;
+  while ($ji = dbNext($r)) {
+
+    echo "$i. $nameA was in";
+     echo" $ji[0]";
+    if (!empty($ji[1]) ) echo" ($ji[1])";
+echo " with";
+     echo" $ji[2]; $ji[2] was in";
+     echo" $ji[3]";
+    if (!empty($ji[4]) ) echo" ($ji[4])";
+echo " with";
+     echo" $ji[5]; $ji[5] was in";
+     echo" $ji[6]";
+    if (!empty($ji[7]) ) echo" ($ji[7])";
+echo" with";
+     echo" $ji[8]; $ji[8] was in";
+     echo" $ji[9]";
+    if (!empty($ji[10]) ) echo" ($ji[10])";
+echo" with";
+     echo" $ji[11]; $ji[11] was in";
+     echo" $ji[12]";
+    if (!empty($ji[10]) ) echo" ($ji[13])";
+echo" with $nameB";
+
+    echo "\n";
+
+
+    $i++;
+  }
+//echo" FIN \n\n";
+
+  exit; 
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/////////////////////////////////////////////// 6 degree separation
+// want mov3A mov2B intersect. need mov3A
+// get ac3A, from mov2A, minus ac2A, ac1A, guyA
+$q = "SELECT actor_id from Acting where movie_id in %L 
+AND actor_id != %d AND actor_id NOT IN %L AND actor_id NOT IN %L";
+$r = dbQuery($db, mkSQL($q, $mov2A, $guyA, $ac1A, $ac2A) ); 
+$ji = dbNext($r);
+
+$ac3A = "$ji[0]";
+while ($ji = dbNext($r)) $ac3A = "$ac3A,$ji[0]";
+$ac3A = "($ac3A)";
+//echo"ac3A: $ac3A \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit;
+
+// mov3A, from ac3A, minus (mov2A and mov1A and movA)
+$q = "SELECT movie_id from Acting where actor_id in %L 
+AND movie_id NOT IN %L AND movie_id NOT IN %L AND movie_id NOT IN %L";
+$r = dbQuery($db, mkSQL($q, $ac3A, $mov2A, $mov1A, $movA) );
+$ji = dbNext($r);
+
+$mov3A = "$ji[0]";
+while ($ji = dbNext($r)) $mov3A = "$mov3A,$ji[0]";
+$mov3A = "($mov3A)";
+//echo"mov3A: $mov3A \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+if (pg_num_rows($r) == 0) exit; //Actor doesn't exist
+
+
+//Now Intersect
+//echo"6deg\n";
+// 6 degree seperation
+//mov3A mov2b
+// NOTE: optimise by choosing to up-tier A, or B? who's smallest
+$q = " SELECT id from Movie where id in %L AND id in %L ";
+$r = dbQuery($db, mkSQL($q, $mov3A, $mov2B) );
+//while ($ji = dbNext($r)) echo "6deg common movies id: $ji[0]\n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n\n\n\n\n\n";
+
+
+
+if (pg_num_rows($r) > 0) $flag = 6;
+//display results and exit
+if ($flag == 6) { 
+  //echo"6deg SATISFY\n";
+
+// mm, movie id's of intersection match. borrow from Now Intersect
+$q = " SELECT id from Movie where id in %L AND id in %L ";
+$r = dbQuery($db, mkSQL($q, $mov3A, $mov2B) );
+$ji = dbNext($r);
+$mm = "$ji[0]";
+while ($ji = dbNext($r)) $mm = "$mm,$ji[0]";
+$mm = "($mm)";
+//echo"mm: $mm \n";
+//echo pg_num_rows($r); echo"\n\n\n\n\n";
+
+
+
+
+
+
+
+
+
+$q = "
+
+SELECT m1.title, m1.year, a2.name, m2.title, m2.year, a3.name, m3.title, m3.year, a4.name, m4.title, m4.year
+  , a5.name, m5.title, m5.year
+  , a6.name, m6.title, m6.year
+
+FROM (
+
+  -- all id's
+  SELECT F.mi1 as mi1, F.ai2 as ai2, F.mi2 as mi2, F.ai3 as ai3, F.mi3 as mi3, F.ai4 as ai4, F.mi4 as mi4,
+    S.ai5 as ai5, S.mi5 as mi5, S.ai6 as ai6, S.mi6 as mi6
+
+  FROM (
+
+    -- FIRST HALF [need to start from ai4 mi4]
+    -- get mi1
+    SELECT A.movie_id as mi1, T.ai2 as ai2, T.mi2 as mi2, T.ai3 as ai3, T.mi3 as mi3
+      , T.ai4 as ai4, T.mi4 as mi4
+    FROM (
+
+      -- get ai2
+      SELECT A.actor_id as ai2, T.mi2 as mi2, T.ai3 as ai3, T.mi3 as mi3
+        , T.ai4 as ai4, T.mi4 as mi4
+      FROM (
+
+        -- get mi2
+        SELECT A.movie_id as mi2, T.ai3 as ai3, T.mi3 as mi3
+          , T.ai4 as ai4, T.mi4 as mi4
+        FROM (
+
+          --@@@@@@@@@@@@@@@@@@@@@@@@@
+          -- get ai3
+          SELECT a.actor_id as ai3, t.mi3 as mi3, t.ai4 as ai4, t.mi4 as mi4
+          FROM (
+
+            -- get mi3
+            SELECT a.movie_id as mi3, t.ai4 as ai4, t.mi4 as mi4
+            FROM (
+
+              -- get ai4, mi4
+              SELECT actor_id as ai4, movie_id as mi4
+              FROM Acting
+              WHERE movie_id in %L                    --mm
+              AND actor_id in %L                    --ac3a @@@@@@@@@@
+
+            ) as T
+
+            INNER JOIN Acting A on a.actor_id = t.ai4
+            WHERE a.movie_id in %L                          -- mov2a @@@@@@@@@@@@
+
+          ) as T
+
+          INNER JOIN Acting A on a.movie_id = t.mi3
+          WHERE a.actor_id in %L                            -- ac2a @@@@@@@@@@
+
+        --@@@@@@@@@@@@@@@@@@@@@
+        ) as T
+
+        INNER JOIN Acting A on T.ai3 = A.actor_id
+        WHERE A.movie_id in %L                    --mov1a
+
+      ) as T
+
+      INNER JOIN Acting A on T.mi2 = A.movie_id
+      WHERE A.actor_id in %L                      --ac1a
+
+    ) as T
+
+    INNER JOIN Acting A on T.ai2 = A.actor_id
+    WHERE A.movie_id in %L                        --movA
+
+  ) as F
+
+  INNER JOIN (
+    -- SECOND HALF [no change from 5deg except shift]
+    -- mi6
+    SELECT T.mi4 as mi4, T.ai5 as ai5, T.mi5 as mi5, T.ai6 as ai6, A.movie_id as mi6
+    FROM (
+
+      -- ai6
+      SELECT T.mi4 as mi4, T.ai5 as ai5, T.mi5 as mi5, A.actor_id as ai6
+      FROM (
+
+        -- mi5
+        SELECT T.mi4 as mi4, T.ai5 as ai5, A.movie_id as mi5
+        FROM (
+
+          -- mi4, ai5
+          SELECT movie_id as mi4, actor_id as ai5
+          FROM Acting
+          WHERE movie_id in %L                    --mm
+            AND actor_id in %L                    --ac2b @@@@@@@@@
+
+        ) as T
+
+        INNER JOIN Acting A on A.actor_id = T.ai5
+        WHERE A.movie_id in %L                    --mov1B @@@@@@@@
+
+      ) as T
+
+      INNER JOIN Acting A on A.movie_id = T.mi5
+      WHERE A.actor_id in %L                        --ac1B @@@@@@@@@
+
+    ) as T
+
+    INNER JOIN Acting A on A.actor_id = T.ai6
+    WHERE A.movie_id in %L                       --movB @@@@@@@@@
+
+  ) as S
+
+  ON F.mi4 = S.mi4
+
+) as T
+
+INNER JOIN Movie m1 ON m1.id = T.mi1
+INNER JOIN Actor a2 ON a2.id = T.ai2
+INNER JOIN Movie m2 ON m2.id = T.mi2
+INNER JOIN Actor a3 ON a3.id = T.ai3
+INNER JOIN Movie m3 ON m3.id = T.mi3
+INNER JOIN Actor a4 ON a4.id = T.ai4
+INNER JOIN Movie m4 ON m4.id = T.mi4
+
+INNER JOIN Actor a5 ON a5.id = T.ai5
+INNER JOIN Movie m5 ON m5.id = T.mi5
+
+INNER JOIN Actor a6 ON a6.id = T.ai6
+INNER JOIN Movie m6 ON m6.id = T.mi6
+
+
+
+ORDER BY m1.title, m1.year, a2.name, m2.title, m2.year, a3.name, m3.title, m3.year, a4.name, m4.title, m4.year
+  , a5.name, m5.title, m5.year
+  , a6.name, m6.title, m6.year
+
+
+";
+
+  $r = dbQuery($db, mkSQL($q, $mm, $ac3A, $mov2A, $ac2A, $mov1A, $ac1A, $movA, $mm, $ac2B, $mov1B, $ac1B, $movB) );
+  $i = 1;
+  while ($ji = dbNext($r)) {
+
+    echo "$i. $nameA was in";
+     echo" $ji[0]";
+    if (!empty($ji[1]) ) echo" ($ji[1])";
+echo " with";
+     echo" $ji[2]; $ji[2] was in";
+     echo" $ji[3]";
+    if (!empty($ji[4]) ) echo" ($ji[4])";
+echo " with";
+     echo" $ji[5]; $ji[5] was in";
+     echo" $ji[6]";
+    if (!empty($ji[7]) ) echo" ($ji[7])";
+echo" with";
+     echo" $ji[8]; $ji[8] was in";
+     echo" $ji[9]";
+    if (!empty($ji[10]) ) echo" ($ji[10])";
+echo" with";
+     echo" $ji[11]; $ji[11] was in";
+     echo" $ji[12]";
+    if (!empty($ji[10]) ) echo" ($ji[13])";
+echo" with";
+     echo" $ji[14]; $ji[14] was in";
+     echo" $ji[15]";
+    if (!empty($ji[16]) ) echo" ($ji[16])";
+
+echo" with $nameB";
+
+    echo "\n";
+
+
+    $i++;
+  }
+//echo" FIN \n\n";
+
+  exit; 
+}
+
+?>

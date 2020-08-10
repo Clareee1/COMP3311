@@ -1,0 +1,44 @@
+#!/usr/bin/php
+<?php
+
+
+require("a2.php");
+
+
+
+// PROGRAM BODY BEGINS
+
+$usage = "Usage: $argv[0] Name";
+$db = dbConnect(DB_CONNECTION);
+
+// Check arguments
+if (count($argv) < 2) exit("$usage\n");
+
+// Get the return results
+$val = $argv[1];
+$q = "select mo.title,di.name,mo.year, mo.content_rating,ra.imdb_score 
+from public.actor ac,public.director di,public.movie mo,public.rating ra,public.acting act where ra.movie_id = mo.id and mo.director_id = di.id and ac.id = act.actor_id and act. movie_id = mo.id and upper(ac.name) =  upper(%s)
+order by
+case
+when mo.year IS NOT NULL then mo.year END ASC, 
+mo.title ASC";
+
+$r = dbQuery($db, mkSQL($q, $val));
+
+// Iterate through the results and print
+$i = 1;
+while ($t = dbNext($r)) {
+  echo "$i. $t[0] -- $t[1]";
+  echo "(";
+  if (!empty($t[2]))
+    echo "$t[2], ";
+  if (!empty($t[3]))
+    echo "$t[3], ";
+  if (!empty($t[4]))
+    echo "$t[4]";
+  echo ")\n";
+  $i++;
+}
+
+
+?>

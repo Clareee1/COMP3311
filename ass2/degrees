@@ -1,0 +1,123 @@
+#!/usr/bin/php
+<?php
+
+//
+// pg - print all PG and PG-13 movies of a given year
+//
+
+// include the common PHP code file
+require("a2.php");
+
+
+
+// PROGRAM BODY BEGINS
+
+$usage = "Usage: $argv[0] Name M N";
+$db = dbConnect(DB_CONNECTION);
+
+// Check arguments
+if ((count($argv) < 4) or ($argv[2] < 1) or ($argv[2] > $argv[3]) or ($argv[3] > 6) ) exit("$usage\n");
+
+
+
+//Abstract id for actor
+$vQ = "select id from actor order by id";
+$vR = dbQuery($db,mkSQL($vQ));
+
+//Initialize all the visited to 0
+$visited = array();
+while ($vT = dbNext($vR)){
+    $visited[$vT[0]] = 0;
+}
+
+//change the provided actor's name into actor's id
+$q = "select id from actor where upper(name) = upper(%s)";
+$start = dbOneValue($db,mkSQL($q,$argv[1]));
+
+//Select distinct actor who played in the same movie
+$view_id = "create or replace view id_path (a1,a2,movie) as
+select ac1.actor_id,ac2.actor_id,ac1.movie_id
+from Acting ac1,Acting ac2
+where ac1.actor_id<>ac2.actor_id and ac1.movie_id = ac2.movie_id";
+
+$q = dbQuery($db,$view_id);
+
+$name = "select distinct a2 from id_path where a1 = %d";
+
+$queue = new SplQueue();
+$queue->enqueue($start);
+$path = array();
+while($queue->count() > 0){
+
+    $curr =$queue->dequeue();
+    $r = dbQuery($db,mkSQL($name,$curr));
+    //Calculate the length
+    //Searching from the back
+    $num = num($curr,$start,$visited);
+    if ($num > $argv[3]){
+        break;
+    }
+    if ($num >= $argv[2]){
+    /*put information into a 2d arrray
+    like the format:
+    [0]: {
+            [name] => "xxx"
+            [num] => "xxx"
+           }*/
+        $array = array('name'=>$curr,'num'=>$num);
+        array_push($path,$array);
+    }
+
+    
+    //Checking whether visited or not
+    //Mark the visited as previous id
+    while($t = dbNext($r)){
+        if ($visited[$t[0]] == 0) {
+            $visited[$t[0]] = $curr;
+            $queue->enqueue($t[0]);    
+         }
+    }
+}
+
+
+//Put id back to name string
+$id = "select name from actor where id =%d";
+
+//& help to substitute actor id with actor name
+foreach($path as &$value){
+    $value['name'] = dbOneValue($db,mkSQL($id,$value['name']));
+}
+
+
+
+//Create a 1d array to put the context of name
+foreach($path as $m=>$re){
+    $na[$m] = $re['name'];
+    $nu[$m] = $re['num'];
+}
+
+
+//Use the function in php
+//multisort help to sort by letter order
+//Sort the array n that we created
+array_multisort($nu,SORT_ASC,SORT_STRING,$path);
+
+$i = 1;
+foreach($path as $p){
+    echo "$i. $p[name] ($p[num])\n";
+    $i++;
+}
+
+
+//Searching for the back the the very first
+//Once search that,substitute the current one of the previous code
+function num($j,$start,$visited){
+    $num = 0;
+    while($j != $start){
+        $i = $visited[$j];
+        $j = $i;
+        $num++;
+    }
+    return $num;
+}
+?>
